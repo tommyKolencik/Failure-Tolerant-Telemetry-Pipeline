@@ -1,0 +1,14 @@
+# Target: Python 3.12. Direct dependency pins selected 2026-10-11.
+# SQLite, JSON, logging, threading, and argparse are in Python's standard library.
+
+# Runtime
+fastapi==0.143.0
+uvicorn==0.53.0
+pydantic==2.14.0
+httpx==0.28.1
+psutil==7.2.2
+pyserial==3.5
+
+# Correctness tests and benchmark plots
+pytest==9.1.1
+plotnine==0.15.8

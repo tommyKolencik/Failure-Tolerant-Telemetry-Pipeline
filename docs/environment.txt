@@ -1,0 +1,41 @@
+Development environment baseline
+================================
+
+Recorded: 2026-10-11
+Python: 3.12.10
+Python executable: /usr/local/bin/python3
+OS reported by Python: macOS-26.6.2-arm64-arm-64bit
+Architecture: arm64
+SQLite bundled with this Python: 3.49.1
+Integration target from the plan: Dell Linux node (not checked yet).
+
+Packages already installed in the inspected Python environment:
+  psutil==7.2.2
+  pyserial==3.5
+  plotnine==0.15.8
+
+Not installed in that environment:
+  fastapi, uvicorn, pydantic, httpx, pytest
+
+requirements.txt pins the directly used packages. Existing versions above were
+retained; the other pins were checked against published PyPI release pages:
+  https://pypi.org/project/fastapi/0.143.0/
+  https://pypi.org/project/uvicorn/0.53.0/
+  https://pypi.org/project/pydantic/2.14.0/
+  https://pypi.org/project/httpx/0.28.1/
+  https://pypi.org/project/psutil/7.2.2/
+  https://pypi.org/project/pyserial/3.5/
+  https://pypi.org/project/pytest/9.1.1/
+  https://pypi.org/project/plotnine/0.15.8/
+
+Dependency resolution and application compatibility are separate checks.
+Resolution check: attempted a non-installing pip dry run on 2026-10-11, including
+an explicit public PyPI index with local pip configuration disabled. Both
+attempts stopped at fastapi==0.143.0 with "from versions: none" / "No matching
+distribution found". The cause was not established. The release is listed on
+the PyPI page above, but resolution/installation in this environment remains
+unverified. No project dependencies were installed.
+
+Application compatibility remains untested until implementation begins. No
+pipeline, failure experiments, or benchmarks have run. Record a full resolved
+dependency snapshot and the Dell's Python/OS/SQLite versions for measured runs.

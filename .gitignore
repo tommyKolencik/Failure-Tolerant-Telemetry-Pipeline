@@ -1,0 +1,32 @@
+# Python environments and generated caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration, runtime databases, and logs
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-wal
+*.db-shm
+*.log
+data/*
+!data/.gitkeep
+
+# Generated benchmark artifacts; retain selected evidence deliberately later
+benchmarks/results/*
+!benchmarks/results/.gitkeep
+
+# macOS metadata
+.DS_Store

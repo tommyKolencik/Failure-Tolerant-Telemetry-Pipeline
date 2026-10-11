@@ -1,0 +1,52 @@
+Failure experiments and measurement plan
+=======================================
+
+Status: procedures only; no experiments or measured claims yet.
+
+1. First delivery
+   Publish 1,000 seeded synthetic events through the persistent outbox and
+   uploader. After drain, compare exact keys and payloads with collector data.
+   Pass: every locally accepted event matches once; no unexpected stored keys.
+
+2. Duplicates and conflicts
+   Resend identical events, then reuse a key with changed content.
+   Pass: identical retries increase duplicate counts; conflicting batches fail
+   atomically and preserve original data.
+
+3. Outage and restart
+   Stop the collector for 30 seconds while producing. Restart it and measure
+   time from readiness to backlog drain. Restart the agent with pending rows;
+   repeat collector termination before and after commit.
+   Pass: locally accepted keys/content survive and reconcile after recovery.
+
+4. Lost acknowledgment
+   Use a deterministic fault hook/proxy to lose a response after collector
+   commit, then allow the retry.
+   Pass: one stored row per event key; pending rows drain after a later ACK.
+
+5. Capacity and parsing
+   Fill the 16 MiB logical outbox; send invalid/conflicting batches, an HTTP
+   body above 128 KiB, and serial lines above 1,024 bytes including newline.
+   Pass: explicit rejection, bounded resources, preserved accepted rows, and
+   later valid traffic progresses. Measure RAM and DB/WAL disk use separately.
+
+6. Performance
+   Begin at 100 offered events/sec; increase rates. Run each rate for 60 seconds
+   three times. Compare batch sizes 1, 20, and 100. Record achieved throughput,
+   backlog growth, same-host delivery p50/p95/p99, batch request-to-ACK latency,
+   recovery time, CPU/RSS/disk, and demo latency with instrumentation on/off.
+
+Save raw data and configuration in benchmarks/results/. Include seed, count,
+payload size, package/Python/OS versions, hardware, and commit ID (or explicitly
+record that Git is not initialized). Reconcile accepted, rejected, quarantined,
+stored, missing, and conflicting keys; row counts alone are insufficient.
+Label synthetic runs separately from physical-device runs and record contention
+from running the load generator on the same host. Generate plots with plotnine.
+
+Limits still to choose: collector retention, quarantine/diagnostic retention,
+stats window/row cap, database busy timeout, and retry/backoff/timeouts.
+The initial settings in shared/config.py come from S1_Starter.md.
+
+Guarantee to test: at-least-once transmission with one stored row per event key
+for locally accepted events, assuming available disks and outbox capacity.
+Firmware/USB loss before local acceptance is outside that guarantee.

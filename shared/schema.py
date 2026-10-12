@@ -1,26 +1,29 @@
-"""Step 1 learning guide: define what a valid telemetry event looks like.
-
-Work through the TODOs in order. Event and TemperaturePayload are started below;
-the remaining shared-contract helpers still need implementation.
-Finish this file before agent/outbox.py, then collector/store.py and app.py.
+"""Shared event contract: validate source content 
+    before storing or uploading it.
 """
+import hashlib
+import json
+import re
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from shared.config import SCHEMA_VERSION
+from shared.config import HTTP_BATCH_MAX_EVENTS, SCHEMA_VERSION
 
-# WHY THIS FILE EXISTS
-# The agent and collector need the same rules for accepting an event. Keeping
-# those rules here prevents a producer from accepting data the collector rejects.
-# Read the sample event and field table in S1_Starter.md before starting.
-class TemperaturePayload(BaseModel):
+# A BaseModel uses annotated fields to validate input and build a Python object.
+# Subclasses inherit this configuration, so we only define the common rules once.
+# Nested payload models also inherit StrictModel: nesting alone does not pass
+# an outer model's configuration into an unrelated payload model.
+# Docs: https://docs.pydantic.dev/latest/concepts/config/
+class StrictModel(BaseModel):
     model_config = ConfigDict(
-        strict=True,
-        extra="forbid",
-        allow_inf_nan=False,
-    )  # Reject NaN and positive/negative infinity.
+        strict=True,         # For example, reject "42" or True for an int field.
+        extra="forbid",      # Reject unknown fields instead of silently ignoring them.
+        allow_inf_nan=False, # Reject NaN and positive/negative infinity.
+    )
 
+
+class TemperaturePayload(StrictModel):
     # The field is required, but a failed reading uses None as its value.
     # The project-chosen -50..150 Celsius range is inclusive.
     temperature_c: float | None = Field(ge=-50, le=150)
@@ -46,94 +49,122 @@ class TemperaturePayload(BaseModel):
                 raise ValueError("sensor_ok=False requires temperature_c=None")
             if self.error_code is None or not self.error_code.strip():
                 raise ValueError("sensor_ok=False requires a nonblank error_code")
-            
+
         # An after-model validator must return the validated instance.
         return self
 
 
-# TODO 1A: Gather imports and define a common model configuration.
-# Tools to look up: Pydantic BaseModel, ConfigDict, Field, StrictInt, StrictBool,
-# model_validator, TypeAdapter; typing Annotated and Literal; json and hashlib.
-# Import the existing limits from shared.config rather than copying numbers.
-# Use strict=True and extra="forbid" on your base model and nested payloads.
-# "Strict" means a sequence of "42" must not quietly become integer 42.
-# "Forbid extras" means a misspelled field causes a visible validation error.
-# Also disallow NaN/infinity in every numeric payload field.
+# The envelope describes the source and event identity, regardless of payload.
+# Fields without defaults are required; incoming events must supply their IDs.
+# Field(ge=0, lt=2**63) means 0 <= value < 2**63, as specified by the starter.
+class EventEnvelope(StrictModel):
+    schema_version: int
+    source_id: str = Field(min_length=1, max_length=64)
+    boot_id: str = Field(min_length=32, max_length=32)
+    seq: int = Field(ge=0, lt=2**63)
+    source_uptime_us: int = Field(ge=0, lt=2**63)
+
+    # Field validators check one field. Your model validator above checks the
+    # relationship between multiple fields. Both run after normal type checks
+    # here, and must return the validated value or model on success.
+    # Docs: https://docs.pydantic.dev/latest/concepts/validators/
+    @field_validator("schema_version")
+    @classmethod
+    def check_schema_version(cls, value: int) -> int:
+        if value != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        return value
+
+    @field_validator("source_id")
+    @classmethod
+    def check_source_id(cls, value: str) -> str:
+        # fullmatch checks every character, including a possible final newline.
+        if re.fullmatch(r"[A-Za-z0-9_-]+", value) is None:
+            raise ValueError("source_id must use ASCII letters, digits, _ or -")
+        return value
+
+    @field_validator("boot_id")
+    @classmethod
+    def check_boot_id(cls, value: str) -> str:
+        if re.fullmatch(r"[0-9a-f]{32}", value) is None:
+            raise ValueError("boot_id must be 32 lowercase hexadecimal characters")
+        return value
+
+    # This checks an individual event, not a stream's sequence ordering.
+    # Database uniqueness and producer sequencing are responsibilities elsewhere.
 
 
-# TODO 1B: Define the payload models, starting with TemperaturePayload.
-# A payload is the kind-specific information inside the outer event envelope.
-# Temperature fields: temperature_c (finite number or None), sensor_ok (strict
-# boolean), and a bounded optional error code; choose and document its field name.
-# Use a model validator to check the relationship between those fields:
-# - sensor_ok=True requires a numeric temperature and no failure code.
-# - sensor_ok=False requires temperature_c=None and a nonempty failure code.
-# Zero degrees is a valid reading when sensor_ok=True; it is not a failure marker.
-# Require temperature_c even when its value is None, so a missing field is caught.
-# Then define the other four payloads using the starter's suggested fields:
-# - button.action: action, detected_us, applied_us.
-# - system.status: queue depths, drop/error counters, reset reason.
-# - host.metrics: CPU percentage and memory use; document units/field names.
-# - http.request: normalized route, method, status, duration_ms.
-# The starter leaves some exact shapes open. Write down your choices in each
-# model's comments, bound strings/collections, and keep firmware compatibility
-# in mind. Do not accept an arbitrary unvalidated payload as a shortcut.
+# Inheritance adds kind and payload to all the envelope fields above.
+# Literal allows exactly this kind string. There is no default: it is required.
+# Pydantic validates the nested payload and creates a TemperaturePayload object.
+class TemperatureEvent(EventEnvelope):
+    kind: Literal["sensor.temperature"]
+    payload: TemperaturePayload
 
 
-# TODO 1C: Define the common event-envelope fields in a base event model.
-# schema_version: required strict integer equal to SCHEMA_VERSION (initially 1).
-# Use an explicit equality validator as well as strict integer validation;
-# boolean True must not pass merely because it compares equal to integer 1.
-# source_id: 1..64 ASCII letters, digits, underscores, or hyphens.
-# boot_id: exactly 32 lowercase hexadecimal characters.
-# Hint: re.fullmatch checks the entire ID, including any trailing newline.
-# seq and source_uptime_us: strict integers in [0, 2**63); reject booleans too.
-# Require every envelope field. Do not silently create an ID for incoming data.
-# Sequence ordering is a producer rule; this stateless validator cannot prove
-# uniqueness or order across events. Storage handles uniqueness; arrival may vary.
+# TODO: Define the remaining payloads once their contracts are chosen.
+# The starter suggests these fields, but does not fully specify their rules:
+# - button.action: action, detected_us, applied_us. Choose allowed actions and
+#   whether applied_us must be >= detected_us; confirm with the firmware.
+# - system.status: choose explicit queue/counter field names and reset reasons.
+# - host.metrics: choose memory fields and units (bytes, percent, or both).
+# - http.request: choose route/method string limits and allowed method values;
+#   specify status bounds and use finite, nonnegative duration_ms.
+# Each payload should inherit StrictModel and bound its strings/numeric values.
+# We deliberately do not accept arbitrary dictionaries for unfinished payloads.
+
+# Event is currently an alias for the one fully specified event type.
+# TODO: After defining the other payloads, add one event subclass per kind and
+# replace this alias with Annotated[A | B | ..., Field(discriminator="kind")].
+# A discriminator selects the matching model using the kind field; TypeAdapter
+# will then let validate_event validate that union rather than a single class.
+# Until then, the four other planned kinds are rejected, even though config.py
+# lists them. The complete five-kind shared contract is still unfinished.
+# Docs: https://docs.pydantic.dev/latest/concepts/unions/#discriminated-unions
+Event = TemperatureEvent
 
 
-# TODO 1D: Connect each kind to its matching payload model.
-# A suggested design is one event subclass per kind, inheriting common fields.
-# Each subclass has a Literal kind value and its specific payload type.
-# Combine the five event types into an Annotated union with a "kind"
-# discriminator. A discriminator selects the model from the event's kind field.
-# This checks both the outer envelope and the correct nested payload together.
-# Finish all supported kinds before calling the shared contract complete.
+def validate_event(raw: Any) -> Event:
+    """Return a validated event, or raise Pydantic's ValidationError."""
+    # Any describes what callers can TRY to submit; it does not disable checks.
+    # model_validate checks raw input against Event's fields and validators.
+    # Docs: https://docs.pydantic.dev/latest/concepts/models/#validating-data
+    return Event.model_validate(raw)
 
 
-# TODO 1E: Write validate_event(raw) and the batch-request model.
-# validate_event(raw) should return a validated event or raise ValidationError.
-# A TypeAdapter for the event union can be created once and reused here.
-# The HTTP request shape is {"events": [...]}: define a strict BatchRequest
-# model whose events field uses your event union and has 1..100 items initially.
-# Put the maximum in shared.config; reject unexpected wrapper fields too.
-# The HTTP byte cap is a separate check in collector/app.py, before parsing.
+class BatchRequest(StrictModel):
+    # HTTP shape: {"events": [event, ...]}. Every item is validated as an Event.
+    # Reject empty batches and batches over the existing configured count cap.
+    # The HTTP byte cap must be enforced before JSON parsing in collector/app.py.
+    events: list[Event] = Field(min_length=1, max_length=HTTP_BATCH_MAX_EVENTS)
 
 
-# TODO 1F: Write the three shared identity/serialization helpers.
-# event_key(event) -> tuple: return (source_id, boot_id, seq), in that order.
-# canonical_event_bytes(event) -> bytes:
-#   Dump the validated model in JSON mode, including all envelope/payload fields.
-#   Use sorted keys, compact separators, one fixed ensure_ascii setting, and
-#   allow_nan=False; encode the result as UTF-8. Use the same helper on both ends.
-#   Normalization makes reordered JSON object keys compare consistently. Keep
-#   array order and every meaningful event field; do not hash just the payload.
-# event_hash(event) -> str: SHA-256 of those canonical bytes, as hexadecimal.
-# Host receipt/commit times do not belong in source content or its hash.
-# Validation should not rewrite source_id, boot_id, seq, or source_uptime_us.
+def event_key(event: Event) -> tuple[str, str, int]:
+    """Identity used to detect retransmissions, independent of content."""
+    return (event.source_id, event.boot_id, event.seq)
 
 
-# CHECKPOINT BEFORE STEP 2
-# Try the starter's sample dictionary: it should validate and have the right key.
-# Change seq to -1, True, and "42"; all three should fail.
-# Try an unsupported version/kind, bad IDs, extra fields, NaN, and mismatched
-# temperature status/value. Confirm each fails for a useful reason.
-# Reordering input object keys should preserve canonical bytes and the hash.
-# Changing payload or uptime at the same key should change canonical content.
-# A valid 100-event BatchRequest should pass; 101 should fail.
-# These remaining checks cover the full contract, which is still in progress.
+def canonical_event_bytes(event: Event) -> bytes:
+    """Serialize validated source content consistently for storage/comparison."""
+    # model_dump converts nested models to dictionaries with JSON-compatible
+    # values. Defaults are included: omitted error_code and explicit None both
+    # become null. This compares normalized content, not the original JSON text.
+    # Docs: https://docs.pydantic.dev/latest/concepts/serialization/
+    content = event.model_dump(mode="json")
+    # Sorting keys and removing optional whitespace makes input key order
+    # irrelevant. UTF-8 is fixed here; allow_nan=False is an extra safeguard.
+    return json.dumps(
+        content,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
 
-# References for the APIs mentioned above:
-# https://docs.pydantic.dev/latest/concepts/strict_mode/
-# https://docs.pydantic.dev/latest/concepts/unions/#discriminated-unions
+
+def event_hash(event: Event) -> str:
+    """SHA-256 fingerprint of the entire normalized event, not just its key."""
+    # Same identity with changed payload/uptime changes this fingerprint.
+    # Storage must compare content too and decide whether to reject a conflict.
+    # Host receipt/commit timestamps stay outside this source event.
+    return hashlib.sha256(canonical_event_bytes(event)).hexdigest()

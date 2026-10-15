@@ -1,0 +1,158 @@
+{
+  "experiment": "collector process SIGKILL immediately before/after ingest COMMIT",
+  "complete": true,
+  "test_suite": {
+    "passed": 247,
+    "command": "python3 -m pytest tests/ -q"
+  },
+  "raw_directory": "benchmarks/results/commit-crashes-mac",
+  "source_snapshot_directory": "benchmarks/results/commit-crashes-mac/source",
+  "metadata": {
+    "started_at_utc": "2026-10-14T00:50:27.602691+00:00",
+    "configuration": {
+      "batch_sizes": [
+        1,
+        100
+      ],
+      "seed": 7
+    },
+    "host": "MacBook-Pro-769.local",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "python": "3.12.10",
+    "sqlite": "3.49.1",
+    "logical_cpus": 11,
+    "physical_cpus": 11,
+    "memory_total_bytes": 19327352832,
+    "versions": {
+      "httpx": "0.28.1",
+      "fastapi": "0.143.0",
+      "pydantic": "2.14.0",
+      "uvicorn": "0.53.0",
+      "psutil": "7.2.2",
+      "plotnine": "0.15.8"
+    },
+    "base_commit": "504efd7fabcdd8062b896b4569a4af347861b5ce",
+    "working_tree_dirty": true,
+    "file_sha256": {
+      "benchmarks/run.py": "bab3cbf2117bca9bc3811849c67297d53d511fcb236328629b62e6fdb23e5e33",
+      "agent/uploader.py": "a6142b1b5169e597785db0816d831b6ba5866f4b149099f8ef758be420476086",
+      "agent/outbox.py": "781ef4884a72dfb574a14bd9b4c44d6d395bbdda904c34e0a6cc56ea45dfbd93",
+      "agent/sources.py": "65002896395b80993b4009a0865c38052211956c32fae7a92ceaa98b98e2cbd8",
+      "collector/app.py": "b3777d3fe4300c62a1803fca310e79a1aba490b459192ca92cc76825c0bf35f3",
+      "collector/store.py": "fe07567ac10a48f3a636cbb9ec6b5652ccd892abed2acfe9f735e6cc98b33a1c",
+      "shared/schema.py": "2bd07498851c3016e59e74fb9c6621ff1cf825b5edb475d26a6816442a0a8c90",
+      "shared/config.py": "79c1192e58b552bbdbf099d58626fc5e7c4b9375141d519604d42d089b9bb968",
+      "benchmarks/crash_checks.py": "196583508434bd1f9ea83a4ef62b1fd44318aeabca452efee66f835f7efcbd9d"
+    },
+    "limits": [
+      "owned collector process SIGKILL checks around COMMIT",
+      "not a power-cut, OS-crash, filesystem-corruption, or hardware test"
+    ]
+  },
+  "cases": [
+    {
+      "case": "before_commit-batch-1",
+      "stage": "before_commit",
+      "batch_size": 1,
+      "complete": true,
+      "witness": {
+        "stage": "before_commit",
+        "pid": 11169,
+        "in_transaction": true,
+        "visible_rows_on_connection": 6
+      },
+      "collector_rows_after_kill": 5,
+      "pending_after_kill": 6,
+      "retry_inserted": 1,
+      "retry_duplicates": 0,
+      "first_and_retry_body_sha256": "12dfb0506e398e17562539cc7fdbe8eef3d69b699c76a48f01d3334e21a2b5b3",
+      "request_bodies_identical": true,
+      "final_reconciled_events": 11,
+      "new_locally_accepted_events": 6,
+      "preexisting_events": 5,
+      "pending_after": 0,
+      "quarantined_total": 0,
+      "canonical_content_sha256": "8da197eb0654e6a5b14b7ea560eb0f4839857290add5dd8e2f1e01b55e65c6ef"
+    },
+    {
+      "case": "after_commit-batch-1",
+      "stage": "after_commit",
+      "batch_size": 1,
+      "complete": true,
+      "witness": {
+        "stage": "after_commit",
+        "pid": 11172,
+        "in_transaction": false,
+        "visible_rows_on_connection": 6
+      },
+      "collector_rows_after_kill": 6,
+      "pending_after_kill": 6,
+      "retry_inserted": 0,
+      "retry_duplicates": 1,
+      "first_and_retry_body_sha256": "7404a073784bc14bf9e01aa0682d050d40773d01cf509cc23686c4c5963b7b45",
+      "request_bodies_identical": true,
+      "final_reconciled_events": 11,
+      "new_locally_accepted_events": 6,
+      "preexisting_events": 5,
+      "pending_after": 0,
+      "quarantined_total": 0,
+      "canonical_content_sha256": "389a08fc835ce3f82079249e8160b00299412bb55d034de2da29984e3ed21de1"
+    },
+    {
+      "case": "before_commit-batch-100",
+      "stage": "before_commit",
+      "batch_size": 100,
+      "complete": true,
+      "witness": {
+        "stage": "before_commit",
+        "pid": 11178,
+        "in_transaction": true,
+        "visible_rows_on_connection": 105
+      },
+      "collector_rows_after_kill": 5,
+      "pending_after_kill": 105,
+      "retry_inserted": 100,
+      "retry_duplicates": 0,
+      "first_and_retry_body_sha256": "89c5ccdcf3e6bbe6c92faefd05d1ca7df78a60195fd1288f58d5e7ca5f178c5b",
+      "request_bodies_identical": true,
+      "final_reconciled_events": 110,
+      "new_locally_accepted_events": 105,
+      "preexisting_events": 5,
+      "pending_after": 0,
+      "quarantined_total": 0,
+      "canonical_content_sha256": "220d4d6f21294276c85eaab5027fa42b193f8e0843b71d08c3561dc4742eb96c"
+    },
+    {
+      "case": "after_commit-batch-100",
+      "stage": "after_commit",
+      "batch_size": 100,
+      "complete": true,
+      "witness": {
+        "stage": "after_commit",
+        "pid": 11183,
+        "in_transaction": false,
+        "visible_rows_on_connection": 105
+      },
+      "collector_rows_after_kill": 105,
+      "pending_after_kill": 105,
+      "retry_inserted": 0,
+      "retry_duplicates": 100,
+      "first_and_retry_body_sha256": "064e9beb6b1a7af71783a3f9ed0819f9cde9df89af8a5d5c0e86c580c181bd88",
+      "request_bodies_identical": true,
+      "final_reconciled_events": 110,
+      "new_locally_accepted_events": 105,
+      "preexisting_events": 5,
+      "pending_after": 0,
+      "quarantined_total": 0,
+      "canonical_content_sha256": "cba5385fdef4fdea76f2189ed6c270f2ad3c31e3ff3ef687a85ea5fae8c134f9"
+    }
+  ],
+  "totals": {
+    "cases": 4,
+    "new_locally_accepted_events": 222,
+    "preexisting_setup_events": 20,
+    "exact_reconciled_final_rows": 242,
+    "pending_after": 0,
+    "quarantined_total": 0
+  }
+}

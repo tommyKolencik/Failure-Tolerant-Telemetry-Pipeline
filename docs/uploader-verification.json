@@ -1,0 +1,30 @@
+{
+  "checked_at_utc": "2026-10-13T19:29:57.491971+00:00",
+  "host": "edge-node",
+  "python": "3.14.4",
+  "sqlite": "3.46.1",
+  "versions": {
+    "httpx": "0.28.1",
+    "fastapi": "0.143.0",
+    "pydantic": "2.14.0",
+    "uvicorn": "0.53.0"
+  },
+  "base_commit": "504efd7fabcdd8062b896b4569a4af347861b5ce",
+  "implementation_sha256": "14d8113e64401ed44321e1bd9ba035d4b9346d375fbd9b8781be2356b5468709",
+  "seed": 7,
+  "boot_id": "3cefd29a391449609d6e89dd05302a6a",
+  "transport": "real localhost HTTP, separate collector subprocess",
+  "first_reconciliation_events": 1000,
+  "simulated_lost_ack_retry_duplicates": 100,
+  "pending_during_short_collector_outage": 50,
+  "final_reconciliation_events": 1050,
+  "collector_duplicate_total": 100,
+  "pending_after_recovery": 0,
+  "quarantined_total": 0,
+  "limits": "synthetic functional check; not a throughput benchmark, 30-second outage, hard process-crash test, or hardware run",
+  "test_suite": {
+    "mac_python": "3.12.10",
+    "dell_python": "3.14.4",
+    "passed_on_each": 168
+  }
+}

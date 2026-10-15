@@ -1,0 +1,37 @@
+{
+  "checked_at_utc": "2026-10-13T23:25:16.800525+00:00",
+  "host": "MacBook-Pro-769.local",
+  "python": "3.12.10",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "sqlite": "3.49.1",
+  "versions": {
+    "httpx": "0.28.1",
+    "fastapi": "0.143.0",
+    "pydantic": "2.14.0",
+    "uvicorn": "0.53.0"
+  },
+  "base_commit": "504efd7fabcdd8062b896b4569a4af347861b5ce",
+  "file_sha256": {
+    "agent/main.py": "26ff58e16a1d5ffb0e245a5240d08fbe88c326302d83470282d3c48902f68d55",
+    "agent/outbox.py": "ae9903b18b977ad942c822951d64a0ad74334187f540081abb3288dcf4595cc5",
+    "agent/sources.py": "44ab1747adb1dbe0dda71958f451331862fb4e570d512fa23130986c9e90e659",
+    "agent/uploader.py": "a6142b1b5169e597785db0816d831b6ba5866f4b149099f8ef758be420476086",
+    "collector/app.py": "f8c29a7510f1aee729191628592851ae2434e560bc0c6086c020a5f327f9827e",
+    "collector/store.py": "84db884b03a2246a4fb53bd8f05801d8a7ddc08937b69d4f47b91a2ffc65fb67",
+    "shared/config.py": "79c1192e58b552bbdbf099d58626fc5e7c4b9375141d519604d42d089b9bb968",
+    "shared/schema.py": "81bb23e1a4aa7ca9a30d5919dade2ee34869bf3bf2612af17b08da598b092ae0",
+    "scripts/verify-agent.py": "27f87687c09b3138f422929e44b1d8381892ba3b08dbd636d2a23101853bb6e4"
+  },
+  "seed": 7,
+  "target_offered_rate": 100,
+  "transport": "real localhost HTTP, separate collector and agent CLI processes",
+  "first_reconciliation_events": 1000,
+  "hard_kill_pending_recovered": 50,
+  "concurrent_agent_rejected": true,
+  "graceful_sigterm_events": 16,
+  "graceful_sigterm_exit_code": 143,
+  "final_reconciliation_events": 1066,
+  "pending_after": 0,
+  "quarantined_total": 0,
+  "limits": "synthetic functional check; not a benchmark, 30-second outage, collector commit-boundary crash, or hardware test"
+}

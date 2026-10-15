@@ -1,52 +1,66 @@
-Failure experiments and measurement plan
-=======================================
+Verification and experiments
+============================
 
-Status: procedures only; no experiments or measured claims yet.
+Run from the project root. Helpers own isolated processes/data and preserve
+artifacts. Unit tests use temporary databases and no physical serial device.
 
-1. First delivery
-   Publish 1,000 seeded synthetic events through the persistent outbox and
-   uploader. After drain, compare exact keys and payloads with collector data.
-   Pass: every locally accepted event matches once; no unexpected stored keys.
+  python3 -m pytest tests/ -q
+  python3 scripts/verify-agent.py --with-metrics --outage-seconds 30
+  python3 scripts/verify-serial.py
+  python3 -m benchmarks.crash_checks
 
-2. Duplicates and conflicts
-   Resend identical events, then reuse a key with changed content.
-   Pass: identical retries increase duplicate counts; conflicting batches fail
-   atomically and preserve original data.
+Current-source verification (2026-10-15):
+- 294 tests passed on macOS arm64 / Python 3.12.10.
+- Real localhost HTTP: all 2,897 pending events recovered after a 30-second
+  collector outage and agent SIGKILL. Exact accepted keys and canonical content
+  reconciled across 3,920 final events; zero pending/quarantined events.
+- Collector-readiness-to-recovery: 0.390 s, including drain-agent startup,
+  one observation. Not a sustained benchmark or a general latency guarantee.
+- Commands, environment and source fingerprints:
+  verification-2026-10-15.md and agent-verification-2026-10-15.json.
 
-3. Outage and restart
-   Stop the collector for 30 seconds while producing. Restart it and measure
-   time from readiness to backlog drain. Restart the agent with pending rows;
-   repeat collector termination before and after commit.
-   Pass: locally accepted keys/content survive and reconcile after recovery.
+Measured evidence (historical versions; exact source hashes/copies preserved):
+- Dell uploader: 1,050 exact events, including 100 duplicate retries after a
+  lost ACK and 50 recovered during an outage. uploader-verification.json.
+- Mac CLI: 1,066 exact events across delivery, SIGKILL/restart, competing-agent
+  refusal, and SIGTERM drain. agent-verification-mac.json.
+- Mac host/demo: 3,944 exact events; 2,921 pending survived a 30-second outage
+  and agent kill. Recovery 0.381 s includes drain-agent startup, one observation.
+  metrics-verification-mac.json.
+- Mac serial: 1,063 unique events, 10 late replays, reconnect/new boot IDs,
+  50 pending recovered after kill/outage, and SIGTERM drain.
+  serial-verification-mac.json. Input used pseudo-terminals, not physical USB.
+- Collector COMMIT crashes: four cases, batches 1/100, 242 exact final rows
+  (222 newly accepted + 20 setup). commit-crash-report.md.
+- Synthetic 100/sec target: nine 60-second trials, 53,720 exact accepted events.
+  benchmark-report.md.
+- Synthetic 200/500 targets: eighteen 60-second trials, 303,142 exact events.
+  Target 500 was not achieved; cap 1 grew a queue before draining.
+  benchmark-rate-sweep-report.md.
+- Demo overhead: three matched pairs, 36,000 requests, 18,000 enabled events,
+  zero disabled telemetry. Median paired normal p95 +1.02 ms; CPU +2.27 ms/request.
+  demo-overhead-report.md.
 
-4. Lost acknowledgment
-   Use a deterministic fault hook/proxy to lose a response after collector
-   commit, then allow the retry.
-   Pass: one stored row per event key; pending rows drain after a later ACK.
+Performance commands:
+  python3 -m benchmarks.run --dry-run
+  python3 -m benchmarks.run --duration 2 --repeats 1 --rates 100 200 --plots
+  python3 -m benchmarks.run --duration 60 --repeats 3 --rates 100 --plots
+  python3 -m benchmarks.run --duration 60 --repeats 3 --rates 200 500 --batch-sizes 1 20 100 --plots
+  python3 -m benchmarks.run --duration 45 --repeats 1 --rates 100 --batch-sizes 100 --outage-at 5 --outage-seconds 30
+  python3 -m benchmarks.demo_overhead --requests 6000 --concurrency 4 --repeats 3 --slow-delay .1 --plots
 
-5. Capacity and parsing
-   Fill the 16 MiB logical outbox; send invalid/conflicting batches, an HTTP
-   body above 128 KiB, and serial lines above 1,024 bytes including newline.
-   Pass: explicit rejection, bounded resources, preserved accepted rows, and
-   later valid traffic progresses. Measure RAM and DB/WAL disk use separately.
+--output must name a new directory. Default outputs live in ignored
+benchmarks/results/. Curated JSON/figures in docs/ are shareable with the repo;
+raw databases, ledgers, logs, samples, and source copies require separate retention.
 
-6. Performance
-   Begin at 100 offered events/sec; increase rates. Run each rate for 60 seconds
-   three times. Compare batch sizes 1, 20, and 100. Record achieved throughput,
-   backlog growth, same-host delivery p50/p95/p99, batch request-to-ACK latency,
-   recovery time, CPU/RSS/disk, and demo latency with instrumentation on/off.
+A successful run reconciles complete accepted keys/content, local durable ACKs,
+and zero rejected/missing/unexpected/conflicting/pending/quarantined outcomes.
+Counts alone cannot prove completeness. Keep workloads within collector and
+quarantine retention; pruning removes content and identity.
 
-Save raw data and configuration in benchmarks/results/. Include seed, count,
-payload size, package/Python/OS versions, hardware, and commit ID (or explicitly
-record that Git is not initialized). Reconcile accepted, rejected, quarantined,
-stored, missing, and conflicting keys; row counts alone are insufficient.
-Label synthetic runs separately from physical-device runs and record contention
-from running the load generator on the same host. Generate plots with plotnine.
-
-Limits still to choose: collector retention, quarantine/diagnostic retention,
-stats window/row cap, database busy timeout, and retry/backoff/timeouts.
-The initial settings in shared/config.py come from S1_Starter.md.
-
-Guarantee to test: at-least-once transmission with one stored row per event key
-for locally accepted events, assuming available disks and outbox capacity.
-Firmware/USB loss before local acceptance is outside that guarantee.
+Timing/resource definitions: benchmark-walkthrough.md.
+Crash/overhead implementation: failure-overhead-walkthrough.md.
+Same-host process crashes do not establish power-cut/storage fault tolerance.
+Synthetic Mac runs do not establish Dell/hardware capacity. Remaining work:
+sync/retest on the Dell, confirm firmware contracts/baud, test physical USB and
+sensors, and profile the synthetic target-rate shortfall if higher rates matter.

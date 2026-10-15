@@ -1,34 +1,34 @@
-Correctness test plan
-====================
+Correctness checks
+==================
 
-Status: planned. No automated tests exist yet.
-Add tests alongside each implemented behavior; do not count placeholders as
-passing coverage. Use temporary database paths rather than development data/.
+  python3 -m pytest tests/ -q
 
-M0/M1
-- Validate envelopes, payloads, supported versions, IDs, integer bounds, and
-  finite numbers. Preserve canonical event identity/content.
-- Persist accepted rows and enforce capacity atomically.
-- Deliver 1,000 seeded synthetic events and reconcile exact keys and payloads.
+All databases are temporary; tests do not modify data/ or open physical USB.
+The suite covers:
 
-M2
-- Repeat an event: one stored row and an increasing duplicate counter.
-- Reuse its key with different content: explicit conflict, original unchanged.
-- Invalid/conflicting batch: no partial inserts.
-- Collector unavailable: accepted rows remain pending, then drain after recovery.
-- Commit followed by a lost acknowledgment: safe retry without an extra row.
-- Restart with pending rows; kill collector before and after commit.
-- Full outbox and permanent failures: visible rejection/quarantine counters,
-  bounded resources, and later valid traffic can progress.
+test_collector.py        Atomic batches, replay/conflicts, failed commits,
+                         bounded HTTP bodies, pagination, retention, migrations,
+                         stats, and exact 1,000-event reconciliation.
+test_outbox.py           Capacity, quarantine moves/eviction, durable counters,
+                         competing writers, migrations, and commit rollback.
+test_uploader.py         Exact retries, lost/invalid/oversized ACKs, body packing,
+                         isolation, blocked configuration, backoff, and flush.
+test_sources.py          Seeded generation, identities, bounds, lazy events.
+test_main.py             Independent uploads, restart/drain, ownership, reports,
+                         worker failures, and SIGINT/SIGTERM.
+test_metrics.py          Strict unions, host CPU semantics, concurrent request
+                         identities, ASGI timing, mixed delivery, and stats.
+test_benchmarks.py       Durable timing, exact outcome sets, recovery targets,
+                         bounded configuration, and side-effect-free dry runs.
+test_failure_overhead.py Real child SIGKILL at COMMIT, paired workload semantics,
+                         content/ACK audits, and disabled-mode zero telemetry.
+test_serial.py           Framing/memory bounds, invalid input, reconnect/discards,
+                         firmware identity, cleanup, and stalled-HTTP independence.
 
-M3/M4
-- Verify deterministic demo routes and actual request timing.
-- Bound HTTP bodies before parsing and paginate queries.
-- Handle partial/malformed/oversized serial frames and reconnection; valid
-  traffic after a rejected frame still works and firmware IDs stay unchanged.
+Native HTTP/CLI/pseudo-terminal checks are separate:
+  python3 scripts/verify-agent.py --with-metrics --outage-seconds 30
+  python3 scripts/verify-serial.py
+  python3 -m benchmarks.crash_checks
 
-Run from the project root once real tests are added:
-  python -m pytest tests/ -q
-
-Today pytest would report no tests collected; that is not a passing test suite.
-See docs/experiments.txt for process-failure and measurement procedures.
+Historical evidence and performance commands: ../docs/experiments.txt.
+Dell retest and physical firmware/USB/sensor checks remain pending.

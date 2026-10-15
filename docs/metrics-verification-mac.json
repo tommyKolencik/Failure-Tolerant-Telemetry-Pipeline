@@ -1,0 +1,59 @@
+{
+  "checked_at_utc": "2026-10-13T23:50:40.683684+00:00",
+  "host": "MacBook-Pro-769.local",
+  "python": "3.12.10",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "sqlite": "3.49.1",
+  "versions": {
+    "httpx": "0.28.1",
+    "fastapi": "0.143.0",
+    "pydantic": "2.14.0",
+    "uvicorn": "0.53.0"
+  },
+  "base_commit": "504efd7fabcdd8062b896b4569a4af347861b5ce",
+  "file_sha256": {
+    "agent/main.py": "1dfa258be42e7838c08c0ceb0506cf5740566147947b6bd550ce91d489847488",
+    "agent/outbox.py": "781ef4884a72dfb574a14bd9b4c44d6d395bbdda904c34e0a6cc56ea45dfbd93",
+    "agent/sources.py": "65002896395b80993b4009a0865c38052211956c32fae7a92ceaa98b98e2cbd8",
+    "agent/uploader.py": "a6142b1b5169e597785db0816d831b6ba5866f4b149099f8ef758be420476086",
+    "collector/app.py": "b3777d3fe4300c62a1803fca310e79a1aba490b459192ca92cc76825c0bf35f3",
+    "collector/store.py": "fe07567ac10a48f3a636cbb9ec6b5652ccd892abed2acfe9f735e6cc98b33a1c",
+    "shared/config.py": "79c1192e58b552bbdbf099d58626fc5e7c4b9375141d519604d42d089b9bb968",
+    "shared/schema.py": "2bd07498851c3016e59e74fb9c6621ff1cf825b5edb475d26a6816442a0a8c90",
+    "scripts/verify-agent.py": "ac9321da8a21cb2d49461e7ae204a7bda1cc98fb8c68c0898c926e7734171f12",
+    "demo/app.py": "99937a7eeedd2b99451f21d8cc2a359c65b44f4a3170cea0d4a4897509cf1eec"
+  },
+  "seed": 7,
+  "target_offered_rate": 100,
+  "transport": "real localhost HTTP, separate collector and agent CLI processes",
+  "first_reconciliation_events": 1000,
+  "hard_kill_pending_recovered": 2921,
+  "requested_outage_seconds": 30.0,
+  "outage_to_ready_seconds": 30.566305458007264,
+  "readiness_to_recovery_seconds": 0.38077533400792163,
+  "concurrent_agent_rejected": true,
+  "graceful_sigterm_events": 16,
+  "graceful_sigterm_exit_code": 143,
+  "final_reconciliation_events": 3944,
+  "pending_after": 0,
+  "quarantined_total": 0,
+  "metrics": {
+    "host_events": 3,
+    "request_events": 4,
+    "slow_request_duration_ms": 100.651917,
+    "request_stats": {
+      "sampled_count": 4,
+      "error_count": 1,
+      "status_classes": {
+        "2xx": 3,
+        "5xx": 1
+      },
+      "mean_duration_ms": 25.383468999999998,
+      "p50_duration_ms": 0.278125,
+      "p95_duration_ms": 100.651917,
+      "p99_duration_ms": 100.651917
+    },
+    "exact_accepted_content_recovered": true
+  },
+  "limits": "same-host functional check; not a sustained throughput benchmark, collector commit-boundary crash, or Arduino hardware test"
+}

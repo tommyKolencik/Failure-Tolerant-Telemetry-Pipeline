@@ -1,92 +1,182 @@
-"""Step 3B learning guide: expose the collector store through a small HTTP API.
+"""Bounded HTTP ingest, health, queries, and collector statistics."""
+import json
+import sqlite3
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Annotated
 
-Complete collector/store.py first. Write the application beneath these TODOs.
-This file contains no FastAPI instance or routes yet.
-"""
+from fastapi import FastAPI, HTTPException, Query, Request
+from pydantic import Field, ValidationError
+from starlette.concurrency import run_in_threadpool
+from starlette.requests import ClientDisconnect
 
-# WHY THIS FILE EXISTS
-# An HTTP response is the agent's signal that a batch reached durable storage.
-# The API validates the incoming request and calls the store. It must not report
-# success while the database operation is still running or after it has failed.
-
-# TODO 3B-1: Create the FastAPI application and its storage lifecycle.
-# Tools to look up: FastAPI, Request, HTTPException, Pydantic ValidationError,
-# contextlib.asynccontextmanager, and starlette.concurrency.run_in_threadpool.
-# Import BatchRequest from shared.schema and CollectorStore/ConflictError from
-# collector.store. Read byte/count limits from shared.config.
-# Define an app factory that accepts a database path; expose app for Uvicorn.
-# The default may use data/collector.sqlite3. A factory makes temporary DBs easy
-# to use later in tests without touching your development data.
-# Initialize the store during FastAPI lifespan startup and fail visibly if that
-# fails. Run synchronous store work through the thread pool, including startup.
-# Each store operation must open/use/close its own connection on that worker.
-# Save the configured store on application state for the request handlers.
-
-
-# TODO 3B-2: Add GET /healthz and GET /readyz.
-# /healthz: a lightweight process-health response; no large queries.
-# /readyz: await the synchronous store.check_ready() in the thread pool.
-# Return 200 on successful access and 503 if storage is unavailable.
-# These answer different questions: alive versus able to access its event store.
+from collector.store import (
+    CollectorStats, CollectorStore, ConflictError, EventPage, InvalidQueryError,
+)
+from shared.config import (
+    COLLECTOR_MAX_RETAINED_EVENTS,
+    HTTP_BODY_MAX_BYTES,
+    QUERY_DEFAULT_LIMIT,
+    QUERY_MAX_LIMIT,
+    STATS_MAX_EVENTS,
+    STATS_WINDOW_SECONDS,
+)
+from shared.schema import BatchRequest, StrictModel
 
 
-# TODO 3B-3: Add POST /v1/events/batch with a bounded raw-body reader.
-# Use an async route receiving Request directly so you can limit the raw body
-# BEFORE JSON parsing/model validation. Automatic body-model parsing happens
-# too early for this particular byte-limit requirement.
-# Check that the media type is application/json (allow its charset parameter).
-# A Content-Length above the cap can be rejected early, but never trust it as
-# the only check: streamed/chunked requests may omit it or declare it wrongly.
-# Iterate request.stream(), count bytes, and reject with 413 immediately when
-# the total exceeds HTTP_BODY_MAX_BYTES. Append only within-limit chunks.
-# Do not call request.body()/json() first or continue accumulating after the cap.
-# Streaming limits what this handler retains; the server controls chunk sizes.
+class BatchAcknowledgment(StrictModel):
+    inserted: int = Field(ge=0)
+    duplicates: int = Field(ge=0)
 
 
-# TODO 3B-4: Decode and validate the complete bounded request.
-# Require UTF-8 JSON, reject malformed input with 400, and validate the wrapper
-# using BatchRequest. Translate schema failures to 422 and the event cap is 100.
-# JSON parsers can permit NaN/infinity extensions: reject them when decoding
-# (json.loads has a parse_constant hook), as well as in payload validation.
-# The body must be an object with an events list, not a bare list.
-# Reject an invalid member before calling insert_batch; no partial acceptance.
-# Return bounded diagnostics (for example a count and the first few errors),
-# without echoing whole payloads. A raw Request bypasses automatic validation,
-# so implement these checks and document the request/response shape yourself.
+def _reject_json_constant(value: str) -> None:
+    # Reject nonstandard constants before schema validation.
+    raise ValueError("nonfinite JSON constants are not supported")
 
 
-# TODO 3B-5: Await storage, then return acknowledgment or an explicit error.
-# Call store.insert_batch(validated_events) through run_in_threadpool and await
-# completion. Only then return 200 with {"inserted": n, "duplicates": m}.
-# For success, inserted + duplicates should equal the number of submitted events.
-# Map ConflictError to 409; map transient database availability failures to 503.
-# Malformed/invalid/oversized input is a permanent rejection, not a retry signal.
-# No background insertion after returning success: a crash could lose that data.
-# Keep unexpected failures visible as failures; log concise bounded diagnostics.
-# No database or serial call should block this async handler's event-loop thread.
+async def _read_limited_body(request: Request) -> bytes:
+    """Enforce the byte cap before JSON parsing, including chunked requests."""
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        raise HTTPException(415, "Content-Type must be application/json")
+
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            if not declared_length.isascii() or not declared_length.isdecimal():
+                raise ValueError
+            length = int(declared_length)
+        except ValueError as exc:
+            raise HTTPException(400, "invalid Content-Length") from exc
+        if length > HTTP_BODY_MAX_BYTES:
+            raise HTTPException(413, "request body exceeds the byte limit")
+
+    body = bytearray()
+    try:
+        # Enforce actual bytes even when Content-Length is absent or incorrect.
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > HTTP_BODY_MAX_BYTES:
+                raise HTTPException(413, "request body exceeds the byte limit")
+            body.extend(chunk)
+    except ClientDisconnect as exc:
+        raise HTTPException(400, "request body was interrupted") from exc
+    return bytes(body)
 
 
-# TODO 3B-6: Try the API locally once your app is implemented.
-# From the project root, run one collector worker:
-#   python3 -m uvicorn collector.app:app --host 127.0.0.1 --port 8000
-# Create a JSON request with {"events": [the starter's sample event]}.
-# POST it using curl or HTTPX: first response 1 inserted, then 1 duplicate.
-# Change its payload at the same key: expect 409 and unchanged stored content.
-# Try [new event, conflicting event]: expect 409 with neither partial insert.
-# Try malformed JSON, 101 events, and a body above 128 KiB: each should fail;
-# a later valid request should still work. Restart and resend: still a duplicate.
-# These checks exercise step 3 directly; uploader/source code comes afterward.
+def create_app(
+    database_path: str | Path = "data/collector.sqlite3",
+    *,
+    busy_timeout_ms: int = 1_000,
+    max_retained_events: int = COLLECTOR_MAX_RETAINED_EVENTS,
+    stats_window_seconds: int = STATS_WINDOW_SECONDS,
+    stats_max_events: int = STATS_MAX_EVENTS,
+) -> FastAPI:
+    """Build an app with configurable storage, including temporary test paths."""
+    store = CollectorStore(
+        database_path, busy_timeout_ms=busy_timeout_ms,
+        max_retained_events=max_retained_events,
+        stats_window_seconds=stats_window_seconds, stats_max_events=stats_max_events,
+    )
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        # Keep synchronous SQLite work off the event loop.
+        await run_in_threadpool(store.initialize)
+        application.state.store = store
+        yield
+
+    application = FastAPI(title="Telemetry Collector", lifespan=lifespan)
+
+    @application.get("/healthz")
+    async def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @application.get("/readyz")
+    async def readyz(request: Request) -> dict[str, str]:
+        try:
+            await run_in_threadpool(request.app.state.store.check_ready)
+        except sqlite3.Error as exc:
+            raise HTTPException(503, "collector storage unavailable") from exc
+        return {"status": "ready"}
+
+    @application.post(
+        "/v1/events/batch",
+        response_model=BatchAcknowledgment,
+        responses={
+            400: {"description": "Malformed UTF-8/JSON or interrupted body"},
+            409: {"description": "Same event key, different content; entire batch rejected"},
+            413: {"description": "Request body exceeds 128 KiB"},
+            415: {"description": "Content-Type must be application/json"},
+            422: {"description": "Wrapper or event schema validation failed"},
+            503: {"description": "Collector storage unavailable"},
+        },
+    )
+    async def ingest_batch(request: Request) -> BatchAcknowledgment:
+        """Commit 1..100 events before returning inserted and duplicate counts."""
+        body = await _read_limited_body(request)
+        try:
+            raw = json.loads(
+                body.decode("utf-8"),
+                parse_constant=_reject_json_constant,
+            )
+        except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+            raise HTTPException(400, "body must be valid finite UTF-8 JSON") from exc
+
+        try:
+            batch = BatchRequest.model_validate(raw)
+        except ValidationError as exc:
+            # Avoid echoing invalid source payloads.
+            raise HTTPException(
+                422,
+                {"message": "batch failed schema validation", "error_count": exc.error_count()},
+            ) from exc
+
+        try:
+            # Wait for COMMIT before constructing the ACK.
+            result = await run_in_threadpool(
+                request.app.state.store.insert_batch, batch.events
+            )
+        except ConflictError as exc:
+            raise HTTPException(
+                409,
+                {"message": "event key has different content", "key": list(exc.key)},
+            ) from exc
+        except sqlite3.Error as exc:
+            raise HTTPException(503, "collector storage unavailable") from exc
+
+        return BatchAcknowledgment(inserted=result.inserted, duplicates=result.duplicates)
+
+    @application.get("/v1/events", response_model=EventPage)
+    async def events(
+        request: Request,
+        limit: Annotated[int, Query(ge=1, le=QUERY_MAX_LIMIT)] = QUERY_DEFAULT_LIMIT,
+        cursor: Annotated[int, Query(ge=0, lt=2**63)] = 0,
+        source_id: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
+        kind: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
+    ) -> EventPage:
+        """Page retained events by collector ID; continue with the same filters.
+
+        next_cursor=null marks the current end. Pages reflect live retention."""
+        try:
+            return await run_in_threadpool(
+                request.app.state.store.query_events,
+                limit=limit, cursor=cursor, source_id=source_id, kind=kind,
+            )
+        except InvalidQueryError as exc:
+            raise HTTPException(422, "invalid event query parameters") from exc
+        except sqlite3.Error as exc:
+            raise HTTPException(503, "collector storage unavailable") from exc
+
+    @application.get("/v1/stats", response_model=CollectorStats)
+    async def stats(request: Request) -> CollectorStats:
+        """Lifetime counters and a capped recent sample by collector receipt time."""
+        try:
+            return await run_in_threadpool(request.app.state.store.stats)
+        except sqlite3.Error as exc:
+            raise HTTPException(503, "collector storage unavailable") from exc
+
+    return application
 
 
-# AFTER THIS CHECKPOINT
-# Add /v1/events with pagination (default 100, max 1,000) and source/kind filters.
-# Add /v1/stats with a documented recent window and row cap. Collector counts
-# describe stored/received data; agent outbox backlog belongs to agent diagnostics
-# unless explicitly reported to the collector. Keep all responses bounded.
-# Then move to synthetic sources/uploader and the 1,000-event reconciliation.
-
-# References:
-# https://fastapi.tiangolo.com/advanced/using-request-directly/
-# https://fastapi.tiangolo.com/advanced/events/
-# https://www.starlette.dev/requests/
-# https://www.starlette.dev/threadpool/
+app = create_app()

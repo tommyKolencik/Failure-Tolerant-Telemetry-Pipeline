@@ -1,0 +1,72 @@
+Mac -> Dell deployment
+======================
+
+Shared GitHub origin:
+  https://github.com/tommyKolencik/Failure-Tolerant-Telemetry-Pipeline.git
+Mac:
+  /Users/tom/Desktop/Projects/Failure-Tolerant Telemetry Pipeline
+Dell:
+  /home/scaredbucket/Failure-Tolerant-Telemetry-Pipeline
+SSH: sage = scaredbucket@192.168.1.168; hostname edge-node.
+
+From the Mac project root:
+  bash scripts/sync-sage.sh --dry-run
+  bash scripts/sync-sage.sh
+
+One-way source sync includes uncommitted edits. It preserves .git, environments,
+credentials, runtime data, and benchmark results; it does not delete remote
+files, create commits, or push to GitHub. Use Git for changes made on both hosts.
+
+On the Dell:
+  ssh sage
+  cd /home/scaredbucket/Failure-Tolerant-Telemetry-Pipeline
+  .venv/bin/python -m pip check
+  .venv/bin/python -m pytest tests/ -q
+  .venv/bin/python scripts/verify-agent.py --with-metrics --outage-seconds 30
+  .venv/bin/python scripts/verify-serial.py
+
+The installed Dell environment passed the earlier 168-test uploader checkpoint
+and exact 1,050-event HTTP recovery check (uploader-verification.json). Later
+Mac changes await sync/retest; the last SSH attempt timed out.
+Environment versions: environment.txt and sage-dependencies.txt.
+Service commands: ../README.txt. Experiment commands: experiments.txt.
+
+If rebuilding the environment, Ubuntu ensurepip was absent on this Dell.
+Bootstrap pip inside the project environment:
+
+  python3 -m venv --without-pip .venv
+  .venv/bin/python -c "from urllib.request import urlopen; from pathlib import Path; Path('.venv/get-pip.py').write_bytes(urlopen('https://bootstrap.pypa.io/get-pip.py', timeout=30).read())"
+  .venv/bin/python .venv/get-pip.py
+  .venv/bin/python -m pip install -r requirements.txt
+
+Reference: https://pip.pypa.io/en/stable/installation/#get-pip-py
+
+To view the Dell collector from the Mac, keep this tunnel running:
+  ssh -N -L 8000:127.0.0.1:8000 sage
+Then open http://127.0.0.1:8000/docs.
+
+Hardware
+--------
+
+Detected Arduino Nano ESP32, USB 2341:0070; current device /dev/ttyACM0.
+Stable path:
+  /dev/serial/by-id/usb-Arduino_Nano_ESP32_744DBD9FDE08-if01
+
+The remote user has serial read/write permission. Existing sketches reference
+TMP102 at I2C 0x48 and a Qwiic Button; sensor health is unverified. A passive
+3-second sample at 115200 with DTR/RTS low returned no bytes. The flashed sketch
+and baud remain unknown; projection output differs from the shared schema.
+
+Preserve projection_mapping and projection-baseline. No telemetry firmware has
+been flashed. The nonoperational servo is excluded. Button/status contracts,
+compatible firmware, and physical USB/sensor/reset checks remain pending.
+
+After confirming compatible output and baud, use a dedicated serial outbox:
+  .venv/bin/python -m agent.main --source serial --serial-port /dev/serial/by-id/usb-Arduino_Nano_ESP32_744DBD9FDE08-if01 --baud 115200 --outbox data/serial-outbox.sqlite3
+
+115200 is provisional. Host/demo can keep data/outbox.sqlite3; both uploaders
+can use the same collector. Keep one uploader per outbox and reader per port.
+Recover committed serial rows without opening the device:
+  .venv/bin/python -m agent.main --outbox data/serial-outbox.sqlite3 --count 0 --drain-timeout 30
+
+Framing, resynchronization, and discard semantics: serial-walkthrough.md.

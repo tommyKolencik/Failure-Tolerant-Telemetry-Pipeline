@@ -21,6 +21,7 @@ htmlcov/
 *.db-wal
 *.db-shm
 *.log
+*.agent.lock
 data/*
 !data/.gitkeep
 
